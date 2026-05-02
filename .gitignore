@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Ansible
+*.retry
+vault.yml
+
+# Logs
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+
+# Pre-commit
+.pre-commit-cache/
+
+# Cache
+.cache/
+__pycache__/

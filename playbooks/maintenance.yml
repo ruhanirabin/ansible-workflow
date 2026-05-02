@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Server maintenance — package updates and disk cleanup
+  hosts: all
+  become: yes
+  roles:
+    - server_maintenance

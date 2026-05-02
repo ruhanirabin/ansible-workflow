@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Stop and disable unattended-upgrades service
+  ansible.builtin.service:
+    name: unattended-upgrades
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Remove unattended-upgrades configuration files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - /etc/apt/apt.conf.d/50unattended-upgrades
+    - /etc/apt/apt.conf.d/20auto-upgrades
+    - /etc/apt/apt.conf.d/10periodic
+  failed_when: false
+
+- name: Remove unattended-upgrades packages
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: absent
+    autoremove: true
+    purge: true
+  failed_when: false
+
+- name: Notify about remaining backup files
+  ansible.builtin.command: ls /etc/apt/apt.conf.d/50unattended-upgrades.bak.*
+  register: unattended_upgrades_backup_files
+  changed_when: false
+  failed_when: false
+
+- name: Show remaining backup files if any
+  ansible.builtin.debug:
+    msg: "Remaining backup config files found: {{ unattended_upgrades_backup_files.stdout_lines }}. Remove manually if no longer needed."
+  when: unattended_upgrades_backup_files.stdout_lines | length > 0

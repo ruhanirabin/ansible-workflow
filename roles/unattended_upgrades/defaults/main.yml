@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+# ── Enable/Disable ──────────────────────────────────────────────────────────
+unattended_upgrades_enabled: true
+
+# ── Package Selection ───────────────────────────────────────────────────────
+unattended_upgrades_packages:
+  - unattended-upgrades
+  - apt-listchanges
+
+# ── Origins (what to upgrade) ──────────────────────────────────────────────
+# Default: only security updates. Override per-host or per-group to add more.
+unattended_upgrades_origins: []
+unattended_upgrades_origins_custom: []
+unattended_upgrades_origins_merged: "{{ unattended_upgrades_origins + unattended_upgrades_origins_custom }}"
+
+# ── Package Blacklist ───────────────────────────────────────────────────────
+# Packages to skip during automatic upgrades
+unattended_upgrades_blacklist: []
+unattended_upgrades_blacklist_custom: []
+unattended_upgrades_blacklist_merged: "{{ unattended_upgrades_blacklist + unattended_upgrades_blacklist_custom }}"
+
+# ── Reboot Settings ─────────────────────────────────────────────────────────
+unattended_upgrades_auto_reboot: true
+unattended_upgrades_reboot_time: "00:30"
+
+# ── Cleanup Settings ───────────────────────────────────────────────────────
+unattended_upgrades_remove_unused_deps: true
+unattended_upgrades_remove_new_unused_deps: true
+unattended_upgrades_remove_unused_kernel: true
+
+# ── Mail Settings (optional) ───────────────────────────────────────────────
+unattended_upgrades_mail: ""
+unattended_upgrades_mail_only_on_error: true
+
+# ── Dry-run Validation ─────────────────────────────────────────────────────
+unattended_upgrades_dry_run_enabled: true
