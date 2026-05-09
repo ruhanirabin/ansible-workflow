@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+# server-maintenance is a purely idempotent on-demand role.
+# It does not create persistent configurations, services, or files.
+# There is nothing to uninstall.
+- name: Note that server-maintenance has no persistent state to remove
+  ansible.builtin.debug:
+    msg: "server-maintenance is an idempotent on-demand role. No persistent state to remove."

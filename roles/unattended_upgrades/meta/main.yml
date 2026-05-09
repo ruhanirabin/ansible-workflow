@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+galaxy_info:
+  author: Ruhani Rabin (Rabin)
+  description: Configure automatic security updates via unattended_upgrades
+  company: ""
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all
+    - name: Debian
+      versions:
+        - all
+  galaxy_tags:
+    - unattendedupgrades
+    - security
+    - updates
+    - apt
+    - system
+
+dependencies: []

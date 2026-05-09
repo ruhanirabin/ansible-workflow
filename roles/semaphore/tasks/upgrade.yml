@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Get current Semaphore version
+  ansible.builtin.command: semaphore version
+  register: semaphore_current_version
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Get Semaphore release info (upgrade)
+  ansible.builtin.uri:
+    url: "https://api.github.com/repos/semaphoreui/semaphore/releases/{% if semaphore_version == 'latest' %}latest{% else %}tags/v{{ semaphore_version }}{% endif %}"
+    body_format: json
+    return_content: yes
+    headers:
+      Accept: "application/vnd.github+json"
+  register: semaphore_release
+  changed_when: false
+  check_mode: false
+
+- name: Set latest version and download URL facts (upgrade)
+  ansible.builtin.set_fact:
+    semaphore_latest_version: "{{ semaphore_release.json.tag_name | regex_replace('^v', '') }}"
+
+- name: Set upgrade download URL fact
+  ansible.builtin.set_fact:
+    semaphore_upgrade_deb_url: "https://github.com/semaphoreui/semaphore/releases/download/v{{ semaphore_latest_version }}/semaphore_{{ 'community_' if semaphore_edition == 'community' else '' }}{{ semaphore_latest_version }}_linux_amd64.deb"
+
+- name: Check if upgrade is available
+  ansible.builtin.set_fact:
+    semaphore_upgrade_available: "{{ semaphore_latest_version != semaphore_current_version.stdout | default('') }}"
+
+- name: Skip upgrade if already latest
+  ansible.builtin.debug:
+    msg: "Semaphore is already at latest version ({{ semaphore_current_version.stdout | default('not installed') }})"
+  when: not semaphore_upgrade_available | bool
+
+- name: Download Semaphore .deb package (upgrade)
+  ansible.builtin.get_url:
+    url: "{{ semaphore_upgrade_deb_url }}"
+    dest: "/tmp/semaphore_{{ semaphore_latest_version }}_linux_amd64.deb"
+    mode: '0644'
+  when: semaphore_upgrade_available | bool
+
+- name: Install Semaphore .deb package (upgrade)
+  ansible.builtin.apt:
+    deb: "/tmp/semaphore_{{ semaphore_latest_version }}_linux_amd64.deb"
+    state: present
+  notify: Restart semaphore
+  when: semaphore_upgrade_available | bool
+
+- name: Clean up downloaded .deb (upgrade)
+  ansible.builtin.file:
+    path: "/tmp/semaphore_{{ semaphore_latest_version }}_linux_amd64.deb"
+    state: absent
+  when: semaphore_upgrade_available | bool
+
+- name: Run database migration (upgrade)
+  ansible.builtin.command: >-
+    semaphore --config {{ semaphore_config_dir }}/config.json migrate
+  become: true
+  become_user: "{{ semaphore_service_user }}"
+  changed_when: true
+  when: semaphore_upgrade_available | bool

@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+profile: production
+
+skip_list:
+  - yaml[line-length]
+  - name[casing]
+  - tag[casing]
+  - command-instead-of-module
+
+offline: true

@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Configure automatic security updates across all hosts
+  hosts: all
+  become: yes
+  roles:
+    - unattended_upgrades

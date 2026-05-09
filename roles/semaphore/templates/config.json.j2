@@ -1,0 +1,17 @@
+{# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin) #}
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+{
+  "sqlite": {
+    "host": "{{ semaphore_db_path }}"
+  },
+  "dialect": "sqlite",
+  "port": ":{{ semaphore_port }}"{% if semaphore_interface != "" %},
+  "interface": "{{ semaphore_interface }}"{% endif %}{% if semaphore_web_host != "" %},
+  "web_host": "{{ semaphore_web_host }}"{% endif %}{% if semaphore_log_level != "" %},
+  "log_level": "{{ semaphore_log_level }}"{% endif %},
+  "tmp_path": "{{ semaphore_tmp_path }}",
+  "git_client": "{{ semaphore_git_client }}",
+  "cookie_hash": "{{ semaphore_cookie_hash.stdout }}",
+  "cookie_encryption": "{{ semaphore_cookie_encryption.stdout }}",
+  "access_key_encryption": "{{ semaphore_access_key_encryption.stdout }}"
+}

@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Validate semaphore edition
+  ansible.builtin.assert:
+    that:
+      - semaphore_edition in ['full', 'community']
+    fail_msg: "semaphore_edition must be 'full' or 'community'"
+
+- name: Validate port number
+  ansible.builtin.assert:
+    that:
+      - semaphore_port | int > 0
+      - semaphore_port | int < 65536
+    fail_msg: "semaphore_port must be a valid port number (1-65535)"
+
+- name: Validate git client
+  ansible.builtin.assert:
+    that:
+      - semaphore_git_client in ['cmd_git', 'go_git']
+    fail_msg: "semaphore_git_client must be 'cmd_git' or 'go_git'"

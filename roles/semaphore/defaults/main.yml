@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+# ── Enable / Run ────────────────────────────────────────────────────────────
+semaphore_enabled: true
+semaphore_run_upgrade: true
+
+# ── Package ─────────────────────────────────────────────────────────────────
+semaphore_version: "latest"
+# "full" = standard build, "community" = lighter build (no pro features)
+semaphore_edition: "community"
+
+# ── Database ────────────────────────────────────────────────────────────────
+# Only SQLite is supported by this role. BoltDB is deprecated.
+semaphore_db_path: "/opt/semaphore/database.sqlite"
+
+# ── Network ─────────────────────────────────────────────────────────────────
+semaphore_port: "3000"
+# Bind to specific IP, or leave empty for all interfaces
+semaphore_interface: ""
+# Public URL (for email links, OAuth callbacks, etc.)
+semaphore_web_host: ""
+
+# ── Paths ───────────────────────────────────────────────────────────────────
+semaphore_config_dir: "/opt/semaphore"
+semaphore_tmp_path: "/opt/semaphore/tmp"
+
+# ── Admin User (created on first run only) ──────────────────────────────────
+# If semaphore_admin_password is empty, a random one is generated and saved
+# to semaphore_admin_password_file.
+semaphore_admin_login: "admin"
+semaphore_admin_name: "Administrator"
+semaphore_admin_email: "admin@localhost"
+semaphore_admin_password: ""
+semaphore_admin_password_file: "{{ semaphore_config_dir }}/.admin_password"
+
+# ── Git Client ──────────────────────────────────────────────────────────────
+# "cmd_git" (default) = uses system git (required for SSH key auth)
+# "go_git" = built-in pure-Go client (no SSH key support)
+semaphore_git_client: "cmd_git"
+
+# ── Service User ────────────────────────────────────────────────────────────
+# Semaphore runs as this user so it inherits SSH keys from ~/.ssh/
+semaphore_service_user: "ansible"
+
+# ── Systemd ─────────────────────────────────────────────────────────────────
+semaphore_log_level: ""  # "" = default, "DEBUG", "INFO", "WARN", "ERROR"
+# IANA timezone used by Semaphore schedules, e.g. Asia/Kuala_Lumpur.
+semaphore_schedule_timezone: "Asia/Kuala_Lumpur"

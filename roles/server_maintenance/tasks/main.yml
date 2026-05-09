@@ -1,0 +1,203 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+# ── Install / Run ───────────────────────────────────────────────────────────
+
+- name: Perform server-maintenance tasks
+  when: server_maintenance_enabled | bool
+  tags:
+    - setup-all
+    - setup-server_maintenance
+    - install-all
+    - install-server_maintenance
+  block:
+    - name: Validate server-maintenance configuration
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/validate_config.yml"
+
+    # ── Phase 1: System Package Updates ─────────────────────────────────────
+
+    - name: Hold specified packages from upgrade
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop: "{{ server_maintenance_hold_packages_merged }}"
+      when: server_maintenance_hold_packages_merged | length > 0
+
+    - name: Refresh apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 0
+
+    - name: Get list of upgradable packages
+      ansible.builtin.command: apt list --upgradable
+      register: server_maintenance_upgradable
+      changed_when: false
+      failed_when: false
+
+    - name: Show upgradable packages
+      ansible.builtin.debug:
+        msg: "{{ server_maintenance_upgradable.stdout_lines | select('match', '.*/') | list }}"
+      when:
+        - server_maintenance_upgradable is defined
+        - server_maintenance_upgradable.stdout_lines | select('match', '.*/') | list | length > 0
+
+    - name: Upgrade all packages (dist-upgrade)
+      ansible.builtin.apt:
+        upgrade: dist
+        autoremove: "{{ server_maintenance_apt_autoremove }}"
+      when: server_maintenance_run_upgrade
+
+    - name: Unhold packages after upgrade
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: install
+      loop: "{{ server_maintenance_hold_packages_merged }}"
+      when: server_maintenance_hold_packages_merged | length > 0
+
+    # ── Phase 2: Disk Space & Log Cleanup ───────────────────────────────────
+
+    - name: Clean apt cache
+      ansible.builtin.command: apt-get clean
+      changed_when: true
+      when: server_maintenance_apt_clean
+
+    - name: Autoremove orphaned packages
+      ansible.builtin.apt:
+        autoremove: yes
+        purge: yes
+      when: server_maintenance_apt_autoremove
+
+    - name: Vacuum journal logs to size limit
+      ansible.builtin.command: "journalctl --vacuum-size={{ server_maintenance_journal_max_size }}"
+      register: server_maintenance_journal_result
+      changed_when: server_maintenance_journal_result.rc == 0
+      failed_when: false
+
+    - name: Show journal vacuum result
+      ansible.builtin.debug:
+        msg: "{{ server_maintenance_journal_result.stdout | default('journalctl not available') }}"
+      when: server_maintenance_journal_result is defined
+
+    # ── Old Kernel Removal ──────────────────────────────────────────────────
+
+    - name: Get running kernel version
+      ansible.builtin.command: uname -r
+      register: server_maintenance_running_kernel
+      changed_when: false
+      check_mode: false
+
+    - name: Get installed kernel packages
+      ansible.builtin.command: dpkg --list 'linux-image-*' 'linux-headers-*'
+      register: server_maintenance_installed_kernels_raw
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Parse installed kernel package names
+      ansible.builtin.set_fact:
+        server_maintenance_kernel_packages: >-
+          {{
+            server_maintenance_installed_kernels_raw.stdout_lines
+            | select('match', '^ii\\s+linux-(image|headers)-')
+            | map('regex_replace', '^ii\\s+(\\S+)\\s+.*', '\\1')
+            | unique
+            | sort
+            | list
+          }}
+      when:
+        - server_maintenance_remove_old_kernels
+        - server_maintenance_installed_kernels_raw.stdout is defined
+        - server_maintenance_installed_kernels_raw.stdout_lines | length > 0
+
+    - name: Extract versioned kernel identifiers (skip meta-packages)
+      ansible.builtin.set_fact:
+        server_maintenance_kernel_versions: >-
+          {{
+            server_maintenance_kernel_packages
+            | select('match', 'linux-(image|headers)-\\d')
+            | map('regex_replace', '^linux-(image|headers)-(.+)$', '\\2')
+            | unique
+            | sort
+            | list
+          }}
+      when:
+        - server_maintenance_remove_old_kernels
+        - server_maintenance_kernel_packages is defined
+
+    - name: Identify old kernels to remove
+      ansible.builtin.set_fact:
+        server_maintenance_old_kernels: >-
+          {{
+            server_maintenance_kernel_versions
+            | difference([server_maintenance_running_kernel.stdout])
+            | difference([server_maintenance_kernel_versions | last])
+            | list
+          }}
+      when:
+        - server_maintenance_remove_old_kernels
+        - server_maintenance_kernel_versions is defined
+        - server_maintenance_kernel_versions | length > 1
+
+    - name: Remove old kernel packages
+      ansible.builtin.apt:
+        name:
+          - "linux-image-{{ item }}"
+          - "linux-headers-{{ item }}"
+        state: absent
+        autoremove: yes
+        purge: yes
+      loop: "{{ server_maintenance_old_kernels }}"
+      when:
+        - server_maintenance_remove_old_kernels
+        - server_maintenance_old_kernels is defined
+        - server_maintenance_old_kernels | length > 0
+
+    # ── Docker Cleanup ──────────────────────────────────────────────────────
+
+    - name: Check if Docker is installed
+      ansible.builtin.command: docker --version
+      register: server_maintenance_docker_check
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Prune Docker unused resources
+      ansible.builtin.command: docker system prune -af --volumes
+      register: server_maintenance_docker_prune_result
+      changed_when: server_maintenance_docker_prune_result.rc == 0
+      when:
+        - server_maintenance_docker_prune
+        - server_maintenance_docker_check.rc == 0
+
+    - name: Show Docker prune result
+      ansible.builtin.debug:
+        msg: "{{ server_maintenance_docker_prune_result.stdout | default('no output') }}"
+      when:
+        - server_maintenance_docker_prune_result is defined
+        - server_maintenance_docker_prune_result.stdout | default('') | length > 0
+
+    # ── Summary ─────────────────────────────────────────────────────────────
+
+    - name: Show disk usage summary
+      ansible.builtin.command: df -h /
+      register: server_maintenance_disk_after
+      changed_when: false
+      check_mode: false
+
+    - name: Print disk usage
+      ansible.builtin.debug:
+        var: server_maintenance_disk_after.stdout_lines
+
+# ── Uninstall ───────────────────────────────────────────────────────────────
+
+- name: Perform server-maintenance removal
+  when: not server_maintenance_enabled | bool
+  tags:
+    - setup-all
+    - setup-server_maintenance
+    - remove-all
+    - remove-server_maintenance
+  block:
+    - name: Uninstall server-maintenance
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/uninstall.yml"

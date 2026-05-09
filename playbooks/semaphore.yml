@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Install and configure Semaphore UI
+  hosts: semaphore_servers
+  become: yes
+  roles:
+    - semaphore

@@ -1,0 +1,120 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+# ── Install / Configure ─────────────────────────────────────────────────────
+
+- name: Perform unattended-upgrades configuration
+  when: unattended_upgrades_enabled | bool
+  tags:
+    - setup-all
+    - setup-unattended_upgrades
+    - install-all
+    - install-unattended_upgrades
+  block:
+    - name: Validate unattended-upgrades configuration
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/validate_config.yml"
+
+    - name: Install unattended-upgrades and apt-listchanges
+      ansible.builtin.apt:
+        name: "{{ unattended_upgrades_packages }}"
+        state: present
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Ensure backup directory exists
+      ansible.builtin.file:
+        path: /var/backups/apt
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Clean stale .bak files from apt.conf.d (existing deployments)
+      ansible.builtin.find:
+        paths: /etc/apt/apt.conf.d
+        patterns: "50unattended-upgrades.bak.*"
+      register: unattended_upgrades_stale_baks
+      failed_when: false
+
+    - name: Remove stale .bak files from apt.conf.d
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ unattended_upgrades_stale_baks.files | default([]) }}"
+
+    - name: Check if 50unattended-upgrades config exists
+      ansible.builtin.stat:
+        path: /etc/apt/apt.conf.d/50unattended-upgrades
+      register: unattended_upgrades_config
+
+    - name: Check for existing backups
+      ansible.builtin.find:
+        paths: /var/backups/apt
+        patterns: "50unattended-upgrades.bak.*"
+      register: unattended_upgrades_existing_baks
+
+    - name: Backup existing 50unattended-upgrades config (once)
+      ansible.builtin.copy:
+        src: /etc/apt/apt.conf.d/50unattended-upgrades
+        dest: "/var/backups/apt/50unattended-upgrades.bak.{{ ansible_date_time.epoch }}"
+        remote_src: yes
+        mode: '0644'
+      when:
+        - unattended_upgrades_config.stat.exists
+        - unattended_upgrades_existing_baks.matched == 0
+
+    - name: Configure unattended-upgrades origins
+      ansible.builtin.template:
+        src: 50unattended-upgrades.j2
+        dest: /etc/apt/apt.conf.d/50unattended-upgrades
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Configure auto-upgrades schedule
+      ansible.builtin.template:
+        src: 20auto-upgrades.j2
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Configure periodic behavior
+      ansible.builtin.template:
+        src: 10periodic.j2
+        dest: /etc/apt/apt.conf.d/10periodic
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enable and start unattended-upgrades service
+      ansible.builtin.systemd:
+        name: unattended-upgrades
+        enabled: yes
+        state: started
+
+    - name: Test unattended-upgrades dry-run
+      ansible.builtin.command: unattended-upgrade --dry-run
+      register: unattended_upgrades_dry_run_result
+      changed_when: false
+      ignore_errors: true
+      when: unattended_upgrades_dry_run_enabled
+
+    - name: Show dry-run result
+      ansible.builtin.debug:
+        msg: "{{ 'Config OK' if unattended_upgrades_dry_run_result.rc == 0 else 'Dry-run had issues, check manually' }}"
+      when: unattended_upgrades_dry_run_enabled
+
+# ── Uninstall ───────────────────────────────────────────────────────────────
+
+- name: Perform unattended-upgrades removal
+  when: not unattended_upgrades_enabled | bool
+  tags:
+    - setup-all
+    - setup-unattended_upgrades
+    - remove-all
+    - remove-unattended_upgrades
+  block:
+    - name: Uninstall unattended-upgrades
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/uninstall.yml"

@@ -1,0 +1,256 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+# ── Install / Run ───────────────────────────────────────────────────────────
+
+- name: Perform semaphore tasks
+  when: semaphore_enabled | bool
+  tags:
+    - setup-all
+    - setup-semaphore
+    - install-all
+    - install-semaphore
+  block:
+    - name: Validate semaphore configuration
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/validate_config.yml"
+
+    # ── Phase 1: Dependencies ───────────────────────────────────────────────
+
+    - name: Ensure git and ansible are installed
+      ansible.builtin.apt:
+        name:
+          - git
+          - ansible
+        state: present
+        update_cache: yes
+
+    # ── Phase 2: Install / Upgrade Binary ───────────────────────────────────
+
+    - name: Get latest Semaphore release info
+      ansible.builtin.uri:
+        url: "https://api.github.com/repos/semaphoreui/semaphore/releases/{% if semaphore_version == 'latest' %}latest{% else %}tags/v{{ semaphore_version }}{% endif %}"
+        body_format: json
+        return_content: yes
+        headers:
+          Accept: "application/vnd.github+json"
+      register: semaphore_release
+      changed_when: false
+      check_mode: false
+
+    - name: Set release version and download URL facts
+      ansible.builtin.set_fact:
+        semaphore_actual_version: "{{ semaphore_release.json.tag_name | regex_replace('^v', '') }}"
+        semaphore_edition_prefix: "{{ 'community_' if semaphore_edition == 'community' else '' }}"
+        semaphore_deb_url: "https://github.com/semaphoreui/semaphore/releases/download/{{ semaphore_release.json.tag_name }}/semaphore_{{ 'community_' if semaphore_edition == 'community' else '' }}{{ semaphore_release.json.tag_name | regex_replace('^v', '') }}_linux_amd64.deb"
+
+    - name: Get currently installed Semaphore version
+      ansible.builtin.command: semaphore version
+      register: semaphore_current_version
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Check if upgrade is needed
+      ansible.builtin.set_fact:
+        semaphore_needs_upgrade: "{{ semaphore_current_version.rc != 0 or semaphore_actual_version != semaphore_current_version.stdout | default('') }}"
+
+    - name: Download Semaphore .deb package
+      ansible.builtin.get_url:
+        url: "{{ semaphore_deb_url }}"
+        dest: "/tmp/semaphore_{{ semaphore_actual_version }}_linux_amd64.deb"
+        mode: '0644'
+      when: semaphore_needs_upgrade | bool
+
+    - name: Install Semaphore .deb package
+      ansible.builtin.apt:
+        deb: "/tmp/semaphore_{{ semaphore_actual_version }}_linux_amd64.deb"
+        state: present
+      notify: Restart semaphore
+      when: semaphore_needs_upgrade | bool
+
+    - name: Clean up downloaded .deb
+      ansible.builtin.file:
+        path: "/tmp/semaphore_{{ semaphore_actual_version }}_linux_amd64.deb"
+        state: absent
+      when: semaphore_needs_upgrade | bool
+
+    # ── Phase 3: Directories ────────────────────────────────────────────────
+
+    - name: Ensure semaphore directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ semaphore_service_user }}"
+        group: "{{ semaphore_service_user }}"
+        mode: '0755'
+      loop:
+        - "{{ semaphore_config_dir }}"
+        - "{{ semaphore_tmp_path }}"
+
+    # ── Phase 4: Configuration ──────────────────────────────────────────────
+
+    - name: Check if config.json already exists
+      ansible.builtin.stat:
+        path: "{{ semaphore_config_dir }}/config.json"
+      register: semaphore_config_stat
+
+    - name: Generate cookie hash
+      ansible.builtin.command: openssl rand -base64 32
+      register: semaphore_cookie_hash
+      changed_when: false
+      check_mode: false
+      when: not semaphore_config_stat.stat.exists
+
+    - name: Generate cookie encryption key
+      ansible.builtin.command: openssl rand -base64 32
+      register: semaphore_cookie_encryption
+      changed_when: false
+      check_mode: false
+      when: not semaphore_config_stat.stat.exists
+
+    - name: Generate access key encryption key
+      ansible.builtin.command: openssl rand -base64 32
+      register: semaphore_access_key_encryption
+      changed_when: false
+      check_mode: false
+      when: not semaphore_config_stat.stat.exists
+
+    - name: Write config.json
+      ansible.builtin.template:
+        src: config.json.j2
+        dest: "{{ semaphore_config_dir }}/config.json"
+        owner: "{{ semaphore_service_user }}"
+        group: "{{ semaphore_service_user }}"
+        mode: '0600'
+      notify: Restart semaphore
+      when:
+        - not semaphore_config_stat.stat.exists
+
+    # ── Phase 5: Database Migration ─────────────────────────────────────────
+
+    - name: Check if database exists
+      ansible.builtin.stat:
+        path: "{{ semaphore_db_path }}"
+      register: semaphore_db_stat
+
+    - name: Run database migration
+      ansible.builtin.command: >-
+        semaphore --config {{ semaphore_config_dir }}/config.json migrate
+      become: true
+      become_user: "{{ semaphore_service_user }}"
+      changed_when: true
+      when: not semaphore_db_stat.stat.exists
+
+    # ── Phase 6: Admin User ─────────────────────────────────────────────────
+
+    - name: Check if admin user already exists
+      ansible.builtin.stat:
+        path: "{{ semaphore_admin_password_file }}"
+      register: semaphore_pw_file_stat
+
+    - name: Generate admin password
+      ansible.builtin.command: openssl rand -base64 12
+      register: semaphore_generated_pw
+      changed_when: false
+      check_mode: false
+      when:
+        - not semaphore_pw_file_stat.stat.exists
+        - semaphore_admin_password == ""
+
+    - name: Set admin password fact
+      ansible.builtin.set_fact:
+        semaphore_resolved_admin_password: >-
+          {{ semaphore_admin_password if semaphore_admin_password != '' else semaphore_generated_pw.stdout }}
+      when: not semaphore_pw_file_stat.stat.exists
+
+    - name: Create admin user
+      ansible.builtin.command: >-
+        semaphore --config {{ semaphore_config_dir }}/config.json user add
+        --admin
+        --login {{ semaphore_admin_login }}
+        --name {{ semaphore_admin_name }}
+        --email {{ semaphore_admin_email }}
+        --password {{ semaphore_resolved_admin_password }}
+      become: true
+      become_user: "{{ semaphore_service_user }}"
+      register: semaphore_user_result
+      changed_when: semaphore_user_result.rc == 0
+      failed_when: false
+      when: not semaphore_pw_file_stat.stat.exists
+
+    - name: Save admin password to file
+      ansible.builtin.copy:
+        content: "{{ semaphore_resolved_admin_password }}\n"
+        dest: "{{ semaphore_admin_password_file }}"
+        owner: "{{ semaphore_service_user }}"
+        group: "{{ semaphore_service_user }}"
+        mode: '0600'
+      when: not semaphore_pw_file_stat.stat.exists
+
+    - name: Show admin credentials
+      ansible.builtin.debug:
+        msg:
+          - "Semaphore admin login: {{ semaphore_admin_login }}"
+          - "Semaphore admin password: {{ semaphore_resolved_admin_password | default('(already created)') }}"
+          - "Password saved to: {{ semaphore_admin_password_file }}"
+      when: not semaphore_pw_file_stat.stat.exists
+
+    # ── Phase 7: Systemd Service ────────────────────────────────────────────
+
+    - name: Install systemd service
+      ansible.builtin.template:
+        src: semaphore.service.j2
+        dest: /etc/systemd/system/semaphore.service
+        mode: '0644'
+      notify:
+        - Reload systemd
+        - Restart semaphore
+
+    # ── Phase 8: Upgrade check ──────────────────────────────────────────────
+
+    - name: Upgrade Semaphore if needed
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/upgrade.yml"
+      when: semaphore_run_upgrade | bool
+
+  rescue:
+    - name: Report semaphore setup failure
+      ansible.builtin.debug:
+        msg: "Semaphore setup failed. Check logs: journalctl -u semaphore"
+
+    - name: Fail on semaphore setup error
+      ansible.builtin.fail:
+        msg: "Semaphore setup failed. Check logs: journalctl -u semaphore"
+
+# ── Uninstall ───────────────────────────────────────────────────────────────
+
+- name: Perform semaphore removal
+  when: not semaphore_enabled | bool
+  tags:
+    - setup-all
+    - setup-semaphore
+    - remove-all
+    - remove-semaphore
+  block:
+    - name: Stop and disable semaphore service
+      ansible.builtin.systemd_service:
+        name: semaphore
+        state: stopped
+        enabled: no
+      failed_when: false
+
+    - name: Remove systemd service file
+      ansible.builtin.file:
+        path: /etc/systemd/system/semaphore.service
+        state: absent
+      notify: Reload systemd
+
+    - name: Remove semaphore binary
+      ansible.builtin.apt:
+        name: semaphore
+        state: absent
+
+    - name: Remove semaphore config directory
+      ansible.builtin.file:
+        path: "{{ semaphore_config_dir }}"
+        state: absent
