@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Stop and disable unattended-upgrades service
+  ansible.builtin.service:
+    name: unattended-upgrades
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Remove unattended-upgrades configuration files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - /etc/apt/apt.conf.d/50unattended-upgrades
+    - /etc/apt/apt.conf.d/20auto-upgrades
+    - /etc/apt/apt.conf.d/10periodic
+  failed_when: false
+
+- name: Remove unattended-upgrades packages
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: absent
+    autoremove: true
+    purge: true
+  failed_when: false
+
+- name: Remove old .bak files from apt.conf.d (prevent apt warnings)
+  ansible.builtin.find:
+    paths: /etc/apt/apt.conf.d
+    patterns: "50unattended-upgrades.bak.*"
+  register: unattended_upgrades_old_baks
+  failed_when: false
+
+- name: Delete old .bak files from apt.conf.d
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ unattended_upgrades_old_baks.files | default([]) }}"
+
+- name: Find backup files to clean
+  ansible.builtin.find:
+    paths: /var/backups/apt
+    patterns: "50unattended-upgrades.bak.*"
+  register: unattended_upgrades_bak_files
+  failed_when: false
+
+- name: Delete backup files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ unattended_upgrades_bak_files.files | default([]) }}"

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Validate common_packages_merged is a list
+  ansible.builtin.assert:
+    that:
+      - common_packages_merged is sequence
+      - common_packages_merged is not string
+      - common_packages_merged is not mapping
+    fail_msg: "common_packages_merged must be a list of package names, not a string or mapping."
+
+- name: Validate common package names are not empty
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - item | length > 0
+    fail_msg: "Common package names must be non-empty strings."
+  loop: "{{ common_packages_merged }}"

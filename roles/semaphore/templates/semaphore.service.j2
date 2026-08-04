@@ -1,0 +1,25 @@
+{# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin) #}
+{# SPDX-License-Identifier: GPL-3.0-or-later #}
+[Unit]
+Description=Semaphore UI
+Documentation=https://docs.semaphoreui.com/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ semaphore_service_user }}
+Group={{ semaphore_service_user }}
+ExecStart=/usr/bin/semaphore server --config {{ semaphore_config_dir }}/config.json
+Restart=always
+RestartSec=10s
+WorkingDirectory={{ semaphore_config_dir }}
+{% if semaphore_log_level != "" %}
+Environment=SEMAPHORE_LOG_LEVEL={{ semaphore_log_level }}
+{% endif %}
+{% if semaphore_schedule_timezone != "" %}
+Environment=SEMAPHORE_SCHEDULE_TIMEZONE={{ semaphore_schedule_timezone }}
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

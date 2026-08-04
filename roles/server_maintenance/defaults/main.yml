@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+# ── Enable/Disable ──────────────────────────────────────────────────────────
+server_maintenance_enabled: true
+
+# ── Package Updates ────────────────────────────────────────────────────────
+server_maintenance_run_upgrade: true
+
+# Packages to temporarily hold during upgrade
+# (auto-unhold after upgrade completes)
+server_maintenance_hold_packages: []
+server_maintenance_hold_packages_custom: []
+server_maintenance_hold_packages_merged: "{{ server_maintenance_hold_packages + server_maintenance_hold_packages_custom }}"
+
+# ── Disk Cleanup ───────────────────────────────────────────────────────────
+server_maintenance_apt_clean: true
+server_maintenance_apt_autoremove: true
+
+# Journal log vacuum — keep only this much
+# Valid values: number followed by M (megabytes) or G (gigabytes)
+# Examples: '100M', '500M', '1G'
+server_maintenance_journal_max_size: "100M"
+
+# Remove old kernels — keeps currently running + 1 previous
+server_maintenance_remove_old_kernels: true
+
+# Docker cleanup — auto-skipped if Docker not installed
+server_maintenance_docker_prune: true

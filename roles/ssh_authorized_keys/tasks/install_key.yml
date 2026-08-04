@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Set target SSH key facts
+  ansible.builtin.set_fact:
+    ssh_authorized_keys_target_user: "{{ ssh_authorized_keys_entry.user | default(ssh_authorized_keys_user) }}"
+    ssh_authorized_keys_target_state: "{{ ssh_authorized_keys_entry.state | default('present') }}"
+    ssh_authorized_keys_key_identity: "{{ ssh_authorized_keys_entry.key.split()[0] ~ ' ' ~ ssh_authorized_keys_entry.key.split()[1] }}"
+
+- name: Read target user passwd entry
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ssh_authorized_keys_target_user }}"
+
+- name: Set target SSH paths
+  ansible.builtin.set_fact:
+    ssh_authorized_keys_target_home: "{{ ansible_facts.getent_passwd[ssh_authorized_keys_target_user][4] }}"
+    ssh_authorized_keys_target_dir: "{{ ansible_facts.getent_passwd[ssh_authorized_keys_target_user][4] }}/.ssh"
+    ssh_authorized_keys_target_file: "{{ ansible_facts.getent_passwd[ssh_authorized_keys_target_user][4] }}/.ssh/authorized_keys"
+
+- name: Ensure target SSH directory exists
+  ansible.builtin.file:
+    path: "{{ ssh_authorized_keys_target_dir }}"
+    state: directory
+    owner: "{{ ssh_authorized_keys_target_user }}"
+    mode: '0700'
+  when:
+    - ssh_authorized_keys_manage_dir | bool
+    - ssh_authorized_keys_target_state == 'present'
+
+- name: Manage SSH authorized key line
+  ansible.builtin.lineinfile:
+    path: "{{ ssh_authorized_keys_target_file }}"
+    regexp: "^{{ ssh_authorized_keys_key_identity | regex_escape }}(?:\\s|$)"
+    line: "{{ ssh_authorized_keys_entry.key }}"
+    state: "{{ ssh_authorized_keys_target_state }}"
+    create: true
+    owner: "{{ ssh_authorized_keys_target_user }}"
+    mode: '0600'

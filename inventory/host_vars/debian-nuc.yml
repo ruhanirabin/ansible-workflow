@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+inventory_automations:
+  - id: nuc-infra-auto-update
+    name: NUC infra auto-update
+    purpose: Pull and recreate the NUC Docker infra stack on its weekly update window.
+    artifacts:
+      - type: script
+        path: /home/rabin/docker/infra/update.sh
+      - type: cron
+        user: rabin
+        match: /home/rabin/docker/infra/update.sh

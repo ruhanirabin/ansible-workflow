@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+inventory_automations:
+  - id: pvexb-network-backup
+    name: Proxmox network backup
+    purpose: Run the Proxmox guest backup flow for the node02 NAS backup path.
+    artifacts:
+      - type: script
+        path: /usr/local/bin/pvexb-backup
+      - type: systemd_service
+        name: pvexb-backup.service
+  - id: disable-nic-offload-eno2
+    name: Disable eno2 NIC offload
+    purpose: Keep the Proxmox node02 e1000e offload mitigation active after boot.
+    artifacts:
+      - type: systemd_service
+        name: disable-nic-offload-eno2.service
+  - id: e1000e-eno2-watchdog
+    name: e1000e eno2 watchdog
+    purpose: Watch for node02 e1000e hardware hangs and reset eno2 as a last-resort recovery path.
+    artifacts:
+      - type: script
+        path: /usr/local/sbin/e1000e-eno2-watchdog
+      - type: systemd_service
+        name: e1000e-eno2-watchdog.service
+      - type: systemd_timer
+        name: e1000e-eno2-watchdog.timer

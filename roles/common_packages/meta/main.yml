@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+galaxy_info:
+  role_name: common_packages
+  author: Ruhani Rabin
+  description: Install baseline packages needed across managed Debian/Ubuntu nodes.
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+dependencies: []

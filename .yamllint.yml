@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+rules:
+  line-length: disable
+  empty-lines:
+    max: 1

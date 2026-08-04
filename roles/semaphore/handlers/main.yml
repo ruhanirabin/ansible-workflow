@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: yes
+
+- name: Restart semaphore
+  ansible.builtin.systemd_service:
+    name: semaphore
+    state: restarted

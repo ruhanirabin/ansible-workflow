@@ -1,0 +1,483 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Prepare local inventory report directory
+  hosts: localhost
+  become: no
+  gather_facts: no
+  vars:
+    inventory_report_root: "{{ lookup('ansible.builtin.env', 'HOME') }}/inventory_reports/ansible-proxmox-blade-954"
+    inventory_raw_dir: "{{ inventory_report_root }}/raw"
+  tasks:
+    - name: Ensure local raw inventory report directory exists
+      ansible.builtin.file:
+        path: "{{ inventory_raw_dir }}"
+        state: directory
+        mode: "0750"
+
+    - name: Fail if inventory_linux group is missing
+      ansible.builtin.assert:
+        that:
+          - "'inventory_linux' in groups"
+        fail_msg: >-
+          Inventory group inventory_linux is required before pruning raw
+          inventory snapshots. Check the active inventory configuration.
+        quiet: true
+
+    - name: Find existing local raw inventory snapshots
+      ansible.builtin.find:
+        paths: "{{ inventory_raw_dir }}"
+        patterns: "*.json"
+        file_type: file
+      register: inventory_existing_raw_snapshots
+      changed_when: false
+
+    - name: Remove raw snapshots for hosts removed from inventory scope
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ inventory_existing_raw_snapshots.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+      when: >-
+        (item.path | basename | regex_replace('\.json$', ''))
+        not in groups['inventory_linux']
+
+- name: Collect read-only host inventory reports
+  hosts: inventory_linux
+  become: yes
+  gather_facts: no
+  ignore_unreachable: yes
+  vars:
+    inventory_report_root: "{{ lookup('ansible.builtin.env', 'HOME') }}/inventory_reports/ansible-proxmox-blade-954"
+    inventory_raw_dir: "{{ inventory_report_root }}/raw"
+  tasks:
+    - name: Ensure local raw inventory report directory exists for limited collection
+      ansible.builtin.file:
+        path: "{{ inventory_raw_dir }}"
+        state: directory
+        mode: "0750"
+      delegate_to: localhost
+      become: no
+      run_once: true
+
+    - name: Check whether host is reachable
+      ansible.builtin.ping:
+      register: inventory_connection_check
+      changed_when: false
+      failed_when: false
+
+    - name: Skip unreachable host for this inventory run
+      ansible.builtin.meta: end_host
+      when: inventory_connection_check.unreachable | default(false)
+
+    - name: Collect Ansible setup facts
+      ansible.builtin.setup:
+      register: inventory_setup_facts
+      changed_when: false
+      failed_when: false
+
+    - name: Collect package facts
+      ansible.builtin.package_facts:
+        manager: auto
+      register: inventory_package_facts
+      failed_when: false
+
+    - name: Collect service facts
+      ansible.builtin.service_facts:
+      register: inventory_service_facts
+      failed_when: false
+
+    - name: Collect custom script candidates
+      ansible.builtin.command:
+        argv:
+          - find
+          - /usr/local/bin
+          - /usr/local/sbin
+          - -maxdepth
+          - "1"
+          - -type
+          - f
+          - -printf
+          - "%p\n"
+      register: inventory_automation_script_candidates
+      changed_when: false
+      failed_when: false
+
+    - name: Collect custom systemd unit candidates
+      ansible.builtin.shell: |
+        set -o pipefail
+        find /etc/systemd/system -maxdepth 1 -type f \
+          \( -name '*.service' -o -name '*.timer' \) \
+          -printf '%p\n'
+      args:
+        executable: /bin/bash
+      register: inventory_automation_systemd_candidates
+      changed_when: false
+      failed_when: false
+
+    - name: Check declared automation script artifacts
+      ansible.builtin.stat:
+        path: "{{ item.1.path }}"
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+      loop: >-
+        {{
+          inventory_automations | default([])
+          | subelements('artifacts', skip_missing=True)
+          | selectattr('1.type', 'defined')
+          | selectattr('1.type', 'equalto', 'script')
+          | selectattr('1.path', 'defined')
+          | list
+        }}
+      loop_control:
+        label: "{{ item.0.id | default(item.0.name | default('automation')) }}:{{ item.1.path | default('missing-path') }}"
+      register: inventory_automation_script_stats
+      changed_when: false
+      failed_when: false
+
+    - name: Check declared automation systemd artifacts
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - "{{ item.1.name }}"
+          - --property=Id,LoadState,ActiveState,UnitFileState,NextElapseUSecRealtime,LastTriggerUSec,Triggers,TriggeredBy
+          - --no-pager
+      loop: >-
+        {{
+          inventory_automations | default([])
+          | subelements('artifacts', skip_missing=True)
+          | selectattr('1.type', 'defined')
+          | selectattr('1.type', 'in', ['systemd_service', 'systemd_timer'])
+          | selectattr('1.name', 'defined')
+          | list
+        }}
+      loop_control:
+        label: "{{ item.0.id | default(item.0.name | default('automation')) }}:{{ item.1.name | default('missing-name') }}"
+      register: inventory_automation_systemd_artifacts
+      changed_when: false
+      failed_when: false
+
+    - name: Check declared automation systemd user artifacts
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - --user
+          - show
+          - "{{ item.1.name }}"
+          - --property=Id,LoadState,ActiveState,UnitFileState,NextElapseUSecRealtime,LastTriggerUSec,Triggers,TriggeredBy
+          - --no-pager
+      loop: >-
+        {{
+          inventory_automations | default([])
+          | subelements('artifacts', skip_missing=True)
+          | selectattr('1.type', 'defined')
+          | selectattr('1.type', 'in', ['systemd_user_service', 'systemd_user_timer'])
+          | selectattr('1.name', 'defined')
+          | selectattr('1.user', 'defined')
+          | selectattr('1.uid', 'defined')
+          | list
+        }}
+      loop_control:
+        label: "{{ item.0.id | default(item.0.name | default('automation')) }}:{{ item.1.user | default('missing-user') }}:{{ item.1.name | default('missing-name') }}"
+      become: true
+      become_user: "{{ item.1.user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ item.1.uid }}"
+      register: inventory_automation_systemd_user_artifacts
+      changed_when: false
+      failed_when: false
+
+    - name: Check declared automation cron artifacts
+      ansible.builtin.command:
+        argv:
+          - crontab
+          - -l
+          - -u
+          - "{{ item.1.user }}"
+      loop: >-
+        {{
+          inventory_automations | default([])
+          | subelements('artifacts', skip_missing=True)
+          | selectattr('1.type', 'defined')
+          | selectattr('1.type', 'equalto', 'cron')
+          | selectattr('1.user', 'defined')
+          | selectattr('1.match', 'defined')
+          | list
+        }}
+      loop_control:
+        label: "{{ item.0.id | default(item.0.name | default('automation')) }}:{{ item.1.user | default('missing-user') }}:{{ item.1.match | default('missing-match') }}"
+      register: inventory_automation_cron_artifacts
+      changed_when: false
+      failed_when: false
+
+    - name: Check whether Docker CLI is available
+      ansible.builtin.command:
+        argv:
+          - which
+          - docker
+      register: inventory_docker_cli
+      changed_when: false
+      failed_when: false
+
+    - name: Check whether Tailscale CLI is available
+      ansible.builtin.command:
+        argv:
+          - which
+          - tailscale
+      register: inventory_tailscale_cli
+      changed_when: false
+      failed_when: false
+
+    - name: Collect block device inventory
+      ansible.builtin.command:
+        argv:
+          - lsblk
+          - --json
+          - --output
+          - NAME,KNAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL,UUID
+      register: inventory_lsblk
+      changed_when: false
+      failed_when: false
+
+    - name: Collect listening ports
+      ansible.builtin.command:
+        argv:
+          - ss
+          - -tulpnH
+      register: inventory_listening_ports
+      changed_when: false
+      failed_when: false
+
+    - name: Collect Docker containers
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker ps --all --no-trunc --format '{{ "{{" }}json .{{ "}}" }}'
+      args:
+        executable: /bin/bash
+      register: inventory_docker_containers
+      changed_when: false
+      failed_when: false
+      when: inventory_docker_cli.rc == 0
+
+    - name: Collect Docker container inspect data
+      ansible.builtin.shell: |
+        ids="$(docker ps -aq)"
+        if [ -n "$ids" ]; then
+          docker inspect $ids
+        else
+          printf '[]\n'
+        fi
+      args:
+        executable: /bin/bash
+      register: inventory_docker_inspect
+      changed_when: false
+      failed_when: false
+      when: inventory_docker_cli.rc == 0
+
+    - name: Collect Docker volumes
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker volume ls --format '{{ "{{" }}json .{{ "}}" }}'
+      args:
+        executable: /bin/bash
+      register: inventory_docker_volumes
+      changed_when: false
+      failed_when: false
+      when: inventory_docker_cli.rc == 0
+
+    - name: Collect Docker networks
+      ansible.builtin.shell: |
+        set -o pipefail
+        docker network ls --no-trunc --format '{{ "{{" }}json .{{ "}}" }}'
+      args:
+        executable: /bin/bash
+      register: inventory_docker_networks
+      changed_when: false
+      failed_when: false
+      when: inventory_docker_cli.rc == 0
+
+    - name: Collect Tailscale IPv4 addresses
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - ip
+          - -4
+      register: inventory_tailscale_ipv4
+      changed_when: false
+      failed_when: false
+      when: inventory_tailscale_cli.rc == 0
+
+    - name: Collect Tailscale status
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - status
+          - --json
+      register: inventory_tailscale_status
+      changed_when: false
+      failed_when: false
+      when: inventory_tailscale_cli.rc == 0
+
+    - name: Collect Tailscale Serve status
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - serve
+          - status
+          - --json
+      register: inventory_tailscale_serve
+      changed_when: false
+      failed_when: false
+      when: inventory_tailscale_cli.rc == 0
+
+    - name: Collect Tailscale Serve status text
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - serve
+          - status
+      register: inventory_tailscale_serve_text
+      changed_when: false
+      failed_when: false
+      when: inventory_tailscale_cli.rc == 0
+
+    - name: Collect Tailscale Funnel status
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - funnel
+          - status
+          - --json
+      register: inventory_tailscale_funnel
+      changed_when: false
+      failed_when: false
+      when: inventory_tailscale_cli.rc == 0
+
+    - name: Collect Tailscale Funnel status text
+      ansible.builtin.command:
+        argv:
+          - tailscale
+          - funnel
+          - status
+      register: inventory_tailscale_funnel_text
+      changed_when: false
+      failed_when: false
+      when: inventory_tailscale_cli.rc == 0
+
+    - name: Write host inventory snapshot locally
+      ansible.builtin.copy:
+        dest: "{{ inventory_raw_dir }}/{{ inventory_hostname }}.json"
+        mode: "0640"
+        content: "{{ inventory_snapshot | to_nice_json }}"
+      delegate_to: localhost
+      become: no
+      vars:
+        inventory_snapshot:
+          schema_version: 1
+          collected_at: "{{ (ansible_date_time | default({})).iso8601 | default(lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')) }}"
+          inventory_hostname: "{{ inventory_hostname }}"
+          ansible_host: "{{ ansible_host | default('') }}"
+          group_names: "{{ group_names }}"
+          ansible_facts: "{{ ansible_facts | default({}) }}"
+          declared_automations: "{{ inventory_automations | default([]) }}"
+          automation_checks:
+            script_stats: "{{ inventory_automation_script_stats.results | default([]) }}"
+            systemd_artifacts: "{{ inventory_automation_systemd_artifacts.results | default([]) }}"
+            systemd_user_artifacts: "{{ inventory_automation_systemd_user_artifacts.results | default([]) }}"
+            cron_artifacts: "{{ inventory_automation_cron_artifacts.results | default([]) }}"
+          command_results:
+            lsblk:
+              rc: "{{ inventory_lsblk.rc | default(999) }}"
+              stdout: "{{ inventory_lsblk.stdout | default('') }}"
+              stderr: "{{ inventory_lsblk.stderr | default('') }}"
+            automation_script_candidates:
+              rc: "{{ inventory_automation_script_candidates.rc | default(999) }}"
+              stdout: "{{ inventory_automation_script_candidates.stdout | default('') }}"
+              stderr: "{{ inventory_automation_script_candidates.stderr | default('') }}"
+            automation_systemd_candidates:
+              rc: "{{ inventory_automation_systemd_candidates.rc | default(999) }}"
+              stdout: "{{ inventory_automation_systemd_candidates.stdout | default('') }}"
+              stderr: "{{ inventory_automation_systemd_candidates.stderr | default('') }}"
+            listening_ports:
+              rc: "{{ inventory_listening_ports.rc | default(999) }}"
+              stdout: "{{ inventory_listening_ports.stdout | default('') }}"
+              stderr: "{{ inventory_listening_ports.stderr | default('') }}"
+            docker_cli:
+              rc: "{{ inventory_docker_cli.rc | default(999) }}"
+              stdout: "{{ inventory_docker_cli.stdout | default('') }}"
+              stderr: "{{ inventory_docker_cli.stderr | default('') }}"
+            docker_containers:
+              rc: "{{ inventory_docker_containers.rc | default(999) }}"
+              stdout: "{{ inventory_docker_containers.stdout | default('') }}"
+              stderr: "{{ inventory_docker_containers.stderr | default('') }}"
+            docker_inspect:
+              rc: "{{ inventory_docker_inspect.rc | default(999) }}"
+              stdout: "{{ inventory_docker_inspect.stdout | default('[]') }}"
+              stderr: "{{ inventory_docker_inspect.stderr | default('') }}"
+            docker_volumes:
+              rc: "{{ inventory_docker_volumes.rc | default(999) }}"
+              stdout: "{{ inventory_docker_volumes.stdout | default('') }}"
+              stderr: "{{ inventory_docker_volumes.stderr | default('') }}"
+            docker_networks:
+              rc: "{{ inventory_docker_networks.rc | default(999) }}"
+              stdout: "{{ inventory_docker_networks.stdout | default('') }}"
+              stderr: "{{ inventory_docker_networks.stderr | default('') }}"
+            tailscale_cli:
+              rc: "{{ inventory_tailscale_cli.rc | default(999) }}"
+              stdout: "{{ inventory_tailscale_cli.stdout | default('') }}"
+              stderr: "{{ inventory_tailscale_cli.stderr | default('') }}"
+            tailscale_ipv4:
+              rc: "{{ inventory_tailscale_ipv4.rc | default(999) }}"
+              stdout: "{{ inventory_tailscale_ipv4.stdout | default('') }}"
+              stderr: "{{ inventory_tailscale_ipv4.stderr | default('') }}"
+            tailscale_status:
+              rc: "{{ inventory_tailscale_status.rc | default(999) }}"
+              stdout: "{{ inventory_tailscale_status.stdout | default('') }}"
+              stderr: "{{ inventory_tailscale_status.stderr | default('') }}"
+            tailscale_serve:
+              rc: "{{ inventory_tailscale_serve.rc | default(999) }}"
+              stdout: "{{ inventory_tailscale_serve.stdout | default('') }}"
+              stderr: "{{ inventory_tailscale_serve.stderr | default('') }}"
+            tailscale_serve_text:
+              rc: "{{ inventory_tailscale_serve_text.rc | default(999) }}"
+              stdout: "{{ inventory_tailscale_serve_text.stdout | default('') }}"
+              stderr: "{{ inventory_tailscale_serve_text.stderr | default('') }}"
+            tailscale_funnel:
+              rc: "{{ inventory_tailscale_funnel.rc | default(999) }}"
+              stdout: "{{ inventory_tailscale_funnel.stdout | default('') }}"
+              stderr: "{{ inventory_tailscale_funnel.stderr | default('') }}"
+            tailscale_funnel_text:
+              rc: "{{ inventory_tailscale_funnel_text.rc | default(999) }}"
+              stdout: "{{ inventory_tailscale_funnel_text.stdout | default('') }}"
+              stderr: "{{ inventory_tailscale_funnel_text.stderr | default('') }}"
+          collection_errors:
+            setup: "{{ inventory_setup_facts.msg | default('') }}"
+            package_facts: "{{ inventory_package_facts.msg | default('') }}"
+            service_facts: "{{ inventory_service_facts.msg | default('') }}"
+
+- name: Render private SilverBullet inventory drafts
+  hosts: localhost
+  become: no
+  gather_facts: no
+  vars:
+    inventory_report_root: "{{ lookup('ansible.builtin.env', 'HOME') }}/inventory_reports/ansible-proxmox-blade-954"
+    inventory_raw_dir: "{{ inventory_report_root }}/raw"
+    inventory_silverbullet_dir: "{{ inventory_report_root }}/silverbullet"
+    inventory_render_silverbullet: true
+  tasks:
+    - name: Render SilverBullet inventory drafts
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/../scripts/render_silverbullet_inventory.py"
+          - --input
+          - "{{ inventory_raw_dir }}"
+          - --output
+          - "{{ inventory_silverbullet_dir }}"
+      changed_when: true
+      when: inventory_render_silverbullet | bool

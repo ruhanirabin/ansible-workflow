@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Perform SSH authorized key tasks
+  when: ssh_authorized_keys_enabled | bool
+  tags:
+    - setup-all
+    - setup-ssh-authorized-keys
+    - install-all
+    - install-ssh-authorized-keys
+  block:
+    - name: Validate SSH authorized key configuration
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/validate_config.yml"
+
+    - name: Install SSH authorized keys
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/install_key.yml"
+      loop: "{{ ssh_authorized_keys_merged }}"
+      loop_control:
+        loop_var: ssh_authorized_keys_entry
+        label: "{{ (ssh_authorized_keys_entry.user | default(ssh_authorized_keys_user)) ~ ':' ~ (ssh_authorized_keys_entry.name | default('unnamed-key')) }}"

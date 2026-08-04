@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Validate ssh_authorized_keys_merged is a list
+  ansible.builtin.assert:
+    that:
+      - ssh_authorized_keys_merged is sequence
+      - ssh_authorized_keys_merged is not string
+      - ssh_authorized_keys_merged is not mapping
+    fail_msg: "ssh_authorized_keys_merged must be a list of key mappings, not a string or mapping."
+
+- name: Validate SSH authorized key entries
+  ansible.builtin.assert:
+    that:
+      - item is mapping
+      - item.key is defined
+      - item.key is string
+      - item.key | length > 0
+      - item.key.split() | length >= 2
+      - item.user is not defined or item.user is string
+      - item.user is not defined or item.user | length > 0
+      - item.name is not defined or item.name is string
+      - item.state is not defined or item.state in ['present', 'absent']
+    fail_msg: "Each SSH authorized key entry must define a non-empty key and optional user/name/state."
+  loop: "{{ ssh_authorized_keys_merged }}"
+  loop_control:
+    label: "{{ item.name | default(item.key | regex_replace('^([^ ]+ [^ ]+).*$', '\\1')) }}"

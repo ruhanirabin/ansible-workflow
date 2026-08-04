@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Fail if unattended_upgrades_reboot_time format is invalid
+  ansible.builtin.fail:
+    msg: >-
+      Invalid configuration for `unattended_upgrades_reboot_time`:
+      Must be in HH:MM format (e.g., '00:30', '10:00').
+  when: >-
+    unattended_upgrades_reboot_time | length > 0
+    and unattended_upgrades_reboot_time is not match('^[0-2]?[0-9]:[0-5][0-9]$')
+
+- name: Fail if auto_reboot is enabled but no reboot_time is set
+  ansible.builtin.fail:
+    msg: >-
+      Auto-reboot is enabled (unattended_upgrades_auto_reboot: true)
+      but no unattended_upgrades_reboot_time is configured.
+  when:
+    - unattended_upgrades_auto_reboot
+    - unattended_upgrades_reboot_time | length == 0

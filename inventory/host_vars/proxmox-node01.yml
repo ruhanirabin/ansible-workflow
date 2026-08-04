@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+inventory_automations:
+  - id: pvexb-usb-backup
+    name: Proxmox USB backup
+    purpose: Run the Proxmox guest backup flow for the node01 USB backup path.
+    artifacts:
+      - type: script
+        path: /usr/local/bin/pvexb-backup
+      - type: script
+        path: /usr/local/sbin/start-pvexb-usb-backup.sh
+      - type: systemd_service
+        name: pvexb-usb-backup.service

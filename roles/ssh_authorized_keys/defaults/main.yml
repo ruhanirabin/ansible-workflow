@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+# Enable/disable SSH authorized key management.
+ssh_authorized_keys_enabled: true
+
+# Default account that receives keys unless an item overrides `user`.
+ssh_authorized_keys_user: root
+
+# Keys managed by this role by default.
+ssh_authorized_keys_auto:
+  - name: proxmox-config-collector
+    user: root
+    key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGp6vCP0U1ynai3U92t59+KBhOyS9OiABEkiMrI2IJDO proxmox-config-collector"
+
+# Extra keys that can be added from inventory/group_vars/host_vars.
+ssh_authorized_keys_custom: []
+
+# Final key list installed by the role.
+ssh_authorized_keys_merged: "{{ ssh_authorized_keys_auto + ssh_authorized_keys_custom }}"
+
+# Whether to create/manage the target user's ~/.ssh directory.
+ssh_authorized_keys_manage_dir: true

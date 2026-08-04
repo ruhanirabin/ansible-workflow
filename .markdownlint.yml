@@ -1,0 +1,18 @@
+---
+# Default state for all rules
+default: true
+
+# Allow long lines
+MD013: false
+
+# Disable table column style check (we use compact tables)
+MD060: false
+
+# Allow code blocks without language specifiers (e.g., tree diagrams)
+MD040: false
+
+# Allow blank lines before/after fenced code blocks to be optional
+MD031: false
+
+# Allow lists without surrounding blank lines
+MD032: false

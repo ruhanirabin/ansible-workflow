@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+inventory_automations:
+  - id: hermes-webui
+    name: Hermes WebUI
+    purpose: Keep the Hermes WebUI available from the root user systemd session.
+    artifacts:
+      - type: script
+        path: /root/hermes-webui/bootstrap.py
+      - type: script
+        path: /usr/local/bin/hermes-webui-check
+      - type: systemd_user_service
+        user: root
+        uid: 0
+        name: hermes-webui.service
+  - id: hermes-webui-tailscale
+    name: Hermes WebUI Tailscale Serve
+    purpose: Reapply the Hermes WebUI Tailscale Serve mapping after boot.
+    artifacts:
+      - type: systemd_user_service
+        user: root
+        uid: 0
+        name: hermes-webui-tailscale.service

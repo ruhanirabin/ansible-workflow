@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Perform common package tasks
+  when: common_packages_enabled | bool
+  tags:
+    - setup-all
+    - setup-common-packages
+    - install-all
+    - install-common-packages
+  block:
+    - name: Validate common package configuration
+      ansible.builtin.include_tasks: "{{ role_path }}/tasks/validate_config.yml"
+
+    - name: Install common packages
+      ansible.builtin.apt:
+        name: "{{ common_packages_merged }}"
+        state: present
+        update_cache: "{{ common_packages_update_cache | bool }}"

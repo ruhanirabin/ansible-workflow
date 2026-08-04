@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+- name: Fail if server_maintenance_journal_max_size is invalid
+  ansible.builtin.fail:
+    msg: >-
+      Invalid configuration for `server_maintenance_journal_max_size`:
+      Must be a number followed by M (megabytes) or G (gigabytes), e.g., '100M' or '1G'
+  when: server_maintenance_journal_max_size is not match('^[0-9]+[MG]$')

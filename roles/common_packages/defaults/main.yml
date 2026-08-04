@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 Ruhani Rabin (Rabin)
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+---
+# Enable/disable common package management.
+common_packages_enabled: true
+
+# Baseline packages installed on all targeted nodes.
+common_packages_auto:
+  - curl
+  - git
+  - rsync
+  - unzip
+  - wget
+
+# Extra packages that can be added from inventory/group_vars/host_vars
+# without editing this role.
+common_packages_custom: []
+
+# Final package list installed by the role.
+common_packages_merged: "{{ common_packages_auto + common_packages_custom }}"
+
+# Whether to update apt cache while installing packages.
+common_packages_update_cache: true
